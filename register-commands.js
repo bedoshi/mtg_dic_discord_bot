@@ -16,11 +16,11 @@ const commands = [
     },
     {
         name: 'get-dictionary',
-        description: 'Get dictionary file'
+        description: 'MTGの辞書データを取得します。'
     },
     {
         name: 'purge-queue',
-        description: 'Purge SQS queue messages'
+        description: '不具合により処理がうまくいかないときに、処理待ちイベントを削除します。'
     }
 ];
 
