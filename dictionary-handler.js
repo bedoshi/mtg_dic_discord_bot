@@ -31,21 +31,26 @@ exports.handler = async (event) => {
             // dic_jp.txtファイルを作成
             const dicJpFile = await createDicJpFile(dicJpEnFile);
 
-            const fileStats = fs.statSync(dicJpFile);
+            // dic_en.txtファイルを作成
+            const dicEnFile = await createDicEnFile(dicJpEnFile);
+
+            const dicJpStats = fs.statSync(dicJpFile);
+            const dicEnStats = fs.statSync(dicEnFile);
 
             console.log('Dictionary processing completed:', {
                 originalFile: dicJpEnFile,
-                processedFile: dicJpFile,
-                size: fileStats.size
+                dicJpFile: dicJpFile,
+                dicEnFile: dicEnFile,
+                dicJpSize: dicJpStats.size,
+                dicEnSize: dicEnStats.size
             });
 
             // ファイルサイズをチェックして分割送信
             const originalStats = fs.statSync(dicJpEnFile);
-            const maxSize = 8 * 1024 * 1024; // 8MB
 
             // 最初のメッセージで情報を送信
             await sendFollowupMessage(applicationId, token,
-                `辞書ファイルを取得しました！\n・dic_jp_en.txt: ${Math.round(originalStats.size / 1024)} KB\n・dic_jp.txt: ${Math.round(fileStats.size / 1024)} KB`);
+                `辞書ファイルを取得しました！\n・dic_jp_en.txt: ${Math.round(originalStats.size / 1024)} KB\n・dic_jp.txt: ${Math.round(dicJpStats.size / 1024)} KB\n・dic_en.txt: ${Math.round(dicEnStats.size / 1024)} KB`);
 
             // ファイルサイズをチェック
             const discordMaxSize = 25 * 1024 * 1024; // 25MB Discord制限
@@ -61,12 +66,21 @@ exports.handler = async (event) => {
             }
 
             // dic_jp.txt をチェック
-            if (fileStats.size <= discordMaxSize) {
+            if (dicJpStats.size <= discordMaxSize) {
                 filesToSend.push({ path: dicJpFile, name: 'dic_jp.txt' });
             } else {
-                console.log(`dic_jp.txt is too large: ${fileStats.size} bytes`);
+                console.log(`dic_jp.txt is too large: ${dicJpStats.size} bytes`);
                 await sendFollowupMessage(applicationId, token,
-                    `⚠️ dic_jp.txt (${Math.round(fileStats.size / 1024 / 1024)}MB) は25MB制限を超えているため送信できません`);
+                    `⚠️ dic_jp.txt (${Math.round(dicJpStats.size / 1024 / 1024)}MB) は25MB制限を超えているため送信できません`);
+            }
+
+            // dic_en.txt をチェック
+            if (dicEnStats.size <= discordMaxSize) {
+                filesToSend.push({ path: dicEnFile, name: 'dic_en.txt' });
+            } else {
+                console.log(`dic_en.txt is too large: ${dicEnStats.size} bytes`);
+                await sendFollowupMessage(applicationId, token,
+                    `⚠️ dic_en.txt (${Math.round(dicEnStats.size / 1024 / 1024)}MB) は25MB制限を超えているため送信できません`);
             }
 
             // 送信可能なファイルがある場合のみ送信
@@ -77,6 +91,7 @@ exports.handler = async (event) => {
             // 一時ファイルを削除
             fs.unlinkSync(dicJpEnFile);
             fs.unlinkSync(dicJpFile);
+            fs.unlinkSync(dicEnFile);
             const zipPath = '/tmp/dictionary.zip';
             if (fs.existsSync(zipPath)) {
                 fs.unlinkSync(zipPath);
@@ -88,8 +103,20 @@ exports.handler = async (event) => {
             const message = JSON.parse(record.body);
             const { applicationId, token } = message;
 
-            await sendFollowupMessage(applicationId, token,
-                'Error fetching dictionary data. Please try again later.');
+            // エラーの種類に応じたメッセージを送信
+            let errorMessage = 'Error fetching dictionary data. Please try again later.';
+
+            if (error.message && error.message.includes('Runtime.OutOfMemory')) {
+                errorMessage = '⚠️ メモリ不足が発生しました。辞書ファイルが大きすぎるため、処理を完了できませんでした。しばらく後に再試行してください。';
+            } else if (error.message && error.message.includes('ENOENT')) {
+                errorMessage = '📁 辞書ファイルが見つかりません。ダウンロードに失敗した可能性があります。';
+            } else if (error.message && error.message.includes('timeout')) {
+                errorMessage = '⏱️ 処理がタイムアウトしました。辞書ファイルが大きいため時間がかかっています。';
+            } else if (error.code === 'EMFILE' || error.code === 'ENFILE') {
+                errorMessage = '🔧 システムリソースが不足しています。しばらく後に再試行してください。';
+            }
+
+            await sendFollowupMessage(applicationId, token, errorMessage);
         }
     }
 
@@ -169,59 +196,175 @@ async function createDicJpFile(originalFile) {
     const outputFile = '/tmp/dic_jp.txt';
 
     try {
-        console.log('Processing dictionary file...');
+        console.log('Processing dictionary file with proper Shift-JIS handling...');
 
         const originalStats = fs.statSync(originalFile);
         console.log(`Original file size: ${originalStats.size} bytes`);
 
-        // ファイルをShift-JIS（バイナリ）で読み込み
+        // ファイル全体をバイナリで読み込み
         const buffer = fs.readFileSync(originalFile);
         console.log(`Original buffer size: ${buffer.length} bytes`);
 
         // Shift-JISバイナリデータをデコード
         let content;
         if (iconv) {
-            // iconv-liteを使用
             content = iconv.decode(buffer, 'shift_jis');
             console.log('Using iconv-lite for Shift-JIS conversion');
         } else {
-            // フォールバック: latin1エンコーディングを使用
-            content = buffer.toString('latin1');
-            console.log('Using latin1 fallback for encoding');
+            // フォールバック: UTF-8として読み込み
+            content = buffer.toString('utf8');
+            console.log('Using UTF-8 fallback for encoding');
         }
         console.log(`Content length: ${content.length} characters`);
 
-        // 各行を処理
-        const processedLines = content.split('\n').map(line => {
-            if (iconv) {
-                // 正しい日本語文字を使用
-                let processed = line.replace(/《/g, ''); // 《を削除
-                processed = processed.replace(/\/.*》/g, ''); // /から》まで削除
-                return processed;
-            } else {
-                // latin1フォールバック: バイト列で処理
-                let processed = line.replace(/ã/g, ''); // 《(0x81A1)を削除
-                processed = processed.replace(/\/.*ä/g, ''); // /から》(0x81A2)まで削除
-                return processed;
+        // 各行を処理（チャンクで分割してメモリ使用量を抑制）
+        const lines = content.split('\n');
+        const outputStream = fs.createWriteStream(outputFile);
+
+        let processedLines = 0;
+        const chunkSize = 1000; // 1000行ずつ処理
+
+        for (let i = 0; i < lines.length; i += chunkSize) {
+            const chunk = lines.slice(i, i + chunkSize);
+
+            const processedChunk = chunk.map(line => {
+                if (iconv) {
+                    // 正しい日本語文字を使用
+                    let processed = line.replace(/《/g, ''); // 《を削除
+                    processed = processed.replace(/\/.*》/g, ''); // /から》まで削除
+                    return processed;
+                } else {
+                    // UTF-8フォールバック
+                    let processed = line.replace(/《/g, ''); // 《を削除
+                    processed = processed.replace(/\/.*》/g, ''); // /から》まで削除
+                    return processed;
+                }
+            });
+
+            // チャンクを書き込み
+            const chunkContent = processedChunk.join('\n') + (i + chunkSize < lines.length ? '\n' : '');
+            const outputBuffer = iconv ? iconv.encode(chunkContent, 'shift_jis') : Buffer.from(chunkContent, 'utf8');
+            outputStream.write(outputBuffer);
+
+            processedLines += chunk.length;
+
+            // 進捗ログ
+            if (processedLines % 10000 === 0 || i + chunkSize >= lines.length) {
+                console.log(`Processed ${processedLines} lines`);
             }
-        });
 
-        const processedContent = processedLines.join('\n');
-        console.log(`Processed content length: ${processedContent.length} characters`);
-
-        // 処理済みの内容を書き込み
-        if (iconv) {
-            const outputBuffer = iconv.encode(processedContent, 'shift_jis');
-            fs.writeFileSync(outputFile, outputBuffer);
-        } else {
-            fs.writeFileSync(outputFile, processedContent, 'latin1');
+            // メモリを解放
+            if (i % 10000 === 0 && global.gc) {
+                global.gc();
+            }
         }
+
+        outputStream.end();
+
+        // ストリーム終了を待機
+        await new Promise((resolve, reject) => {
+            outputStream.on('finish', resolve);
+            outputStream.on('error', reject);
+        });
 
         const processedStats = fs.statSync(outputFile);
         console.log(`Processed file size: ${processedStats.size} bytes`);
         console.log(`Size change: ${processedStats.size - originalStats.size} bytes`);
+        console.log(`Total lines processed: ${processedLines}`);
 
         console.log('Dictionary processing completed');
+        return outputFile;
+
+    } catch (error) {
+        // エラー時にファイルをクリーンアップ
+        if (fs.existsSync(outputFile)) {
+            fs.unlinkSync(outputFile);
+        }
+        throw error;
+    }
+}
+
+async function createDicEnFile(originalFile) {
+    const outputFile = '/tmp/dic_en.txt';
+
+    try {
+        console.log('Processing dictionary file for English with proper Shift-JIS handling...');
+
+        const originalStats = fs.statSync(originalFile);
+        console.log(`Original file size: ${originalStats.size} bytes`);
+
+        // ファイル全体をバイナリで読み込み
+        const buffer = fs.readFileSync(originalFile);
+        console.log(`Original buffer size: ${buffer.length} bytes`);
+
+        // Shift-JISバイナリデータをデコード
+        let content;
+        if (iconv) {
+            content = iconv.decode(buffer, 'shift_jis');
+            console.log('Using iconv-lite for Shift-JIS conversion');
+        } else {
+            // フォールバック: UTF-8として読み込み
+            content = buffer.toString('utf8');
+            console.log('Using UTF-8 fallback for encoding');
+        }
+        console.log(`Content length: ${content.length} characters`);
+
+        // 各行を処理（チャンクで分割してメモリ使用量を抑制）
+        const lines = content.split('\n');
+        const outputStream = fs.createWriteStream(outputFile);
+
+        let processedLines = 0;
+        const chunkSize = 1000; // 1000行ずつ処理
+
+        for (let i = 0; i < lines.length; i += chunkSize) {
+            const chunk = lines.slice(i, i + chunkSize);
+
+            const processedChunk = chunk.map(line => {
+                if (iconv) {
+                    // 正しい日本語文字を使用
+                    let processed = line.replace(/《.*\//g, ''); // 《から/まで削除
+                    processed = processed.replace(/》/g, ''); // 》を削除
+                    return processed;
+                } else {
+                    // UTF-8フォールバック
+                    let processed = line.replace(/《.*\//g, ''); // 《から/まで削除
+                    processed = processed.replace(/》/g, ''); // 》を削除
+                    return processed;
+                }
+            });
+
+            // チャンクを書き込み
+            const chunkContent = processedChunk.join('\n') + (i + chunkSize < lines.length ? '\n' : '');
+            const outputBuffer = iconv ? iconv.encode(chunkContent, 'shift_jis') : Buffer.from(chunkContent, 'utf8');
+            outputStream.write(outputBuffer);
+
+            processedLines += chunk.length;
+
+            // 進捗ログ
+            if (processedLines % 10000 === 0 || i + chunkSize >= lines.length) {
+                console.log(`Processed ${processedLines} lines`);
+            }
+
+            // メモリを解放
+            if (i % 10000 === 0 && global.gc) {
+                global.gc();
+            }
+        }
+
+        outputStream.end();
+
+        // ストリーム終了を待機
+        await new Promise((resolve, reject) => {
+            outputStream.on('finish', resolve);
+            outputStream.on('error', reject);
+        });
+
+        const processedStats = fs.statSync(outputFile);
+        console.log(`Processed file size: ${processedStats.size} bytes`);
+        console.log(`Size change: ${processedStats.size - originalStats.size} bytes`);
+        console.log(`Total lines processed: ${processedLines}`);
+
+        console.log('Dictionary processing for English completed');
         return outputFile;
 
     } catch (error) {
@@ -266,122 +409,6 @@ function sendFollowupMessage(applicationId, token, content) {
     });
 }
 
-function sendFileToDiscord(applicationId, token, filePath, content) {
-    return new Promise((resolve, reject) => {
-        const fileName = path.basename(filePath);
-        const fileContent = fs.readFileSync(filePath);
-
-        // multipart/form-data の境界文字列
-        const boundary = '----formdata-discord-' + Math.random().toString(36);
-
-        // フォームデータを構築
-        let formData = '';
-
-        // コンテンツ部分
-        formData += `--${boundary}\r\n`;
-        formData += 'Content-Disposition: form-data; name="content"\r\n\r\n';
-        formData += content + '\r\n';
-
-        // ファイル部分のヘッダー
-        formData += `--${boundary}\r\n`;
-        formData += `Content-Disposition: form-data; name="files[0]"; filename="${fileName}"\r\n`;
-        formData += 'Content-Type: text/plain\r\n\r\n';
-
-        // 終了境界
-        const endBoundary = `\r\n--${boundary}--\r\n`;
-
-        // リクエストボディを構築
-        const formDataBuffer = Buffer.from(formData, 'utf8');
-        const endBoundaryBuffer = Buffer.from(endBoundary, 'utf8');
-        const requestBody = Buffer.concat([formDataBuffer, fileContent, endBoundaryBuffer]);
-
-        const options = {
-            hostname: 'discord.com',
-            port: 443,
-            path: `/api/v10/webhooks/${applicationId}/${token}/messages/@original`,
-            method: 'PATCH',
-            headers: {
-                'Content-Type': `multipart/form-data; boundary=${boundary}`,
-                'Content-Length': requestBody.length
-            }
-        };
-
-        const req = https.request(options, (res) => {
-            let responseData = '';
-            res.on('data', chunk => responseData += chunk);
-            res.on('end', () => {
-                if (res.statusCode >= 200 && res.statusCode < 300) {
-                    resolve(responseData);
-                } else {
-                    reject(new Error(`HTTP ${res.statusCode}: ${responseData}`));
-                }
-            });
-        });
-
-        req.on('error', reject);
-        req.write(requestBody);
-        req.end();
-    });
-}
-
-function sendMultipleFilesToDiscord(applicationId, token, filePaths, content) {
-    return new Promise((resolve, reject) => {
-        // multipart/form-data の境界文字列
-        const boundary = '----formdata-discord-' + Math.random().toString(36);
-
-        // フォームデータを構築
-        let formData = '';
-
-        // コンテンツ部分
-        formData += `--${boundary}\r\n`;
-        formData += 'Content-Disposition: form-data; name="content"\r\n\r\n';
-        formData += content + '\r\n';
-
-        // リクエストボディを構築
-        const formDataHeader = Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="content"\r\n\r\n${content}\r\n`, 'utf8');
-        const bufferParts = [formDataHeader];
-
-        filePaths.forEach((filePath, index) => {
-            const fileName = path.basename(filePath);
-            const fileContent = fs.readFileSync(filePath);
-
-            const fileHeader = Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="files[${index}]"; filename="${fileName}"\r\nContent-Type: text/plain\r\n\r\n`, 'utf8');
-            bufferParts.push(fileHeader);
-            bufferParts.push(fileContent);
-            bufferParts.push(Buffer.from('\r\n', 'utf8'));
-        });
-
-        bufferParts.push(Buffer.from(`--${boundary}--\r\n`, 'utf8'));
-        const requestBody = Buffer.concat(bufferParts);
-
-        const options = {
-            hostname: 'discord.com',
-            port: 443,
-            path: `/api/v10/webhooks/${applicationId}/${token}/messages/@original`,
-            method: 'PATCH',
-            headers: {
-                'Content-Type': `multipart/form-data; boundary=${boundary}`,
-                'Content-Length': requestBody.length
-            }
-        };
-
-        const req = https.request(options, (res) => {
-            let responseData = '';
-            res.on('data', chunk => responseData += chunk);
-            res.on('end', () => {
-                if (res.statusCode >= 200 && res.statusCode < 300) {
-                    resolve(responseData);
-                } else {
-                    reject(new Error(`HTTP ${res.statusCode}: ${responseData}`));
-                }
-            });
-        });
-
-        req.on('error', reject);
-        req.write(requestBody);
-        req.end();
-    });
-}
 
 function sendFollowupFileMessage(applicationId, token, content, filename) {
     return new Promise((resolve, reject) => {
