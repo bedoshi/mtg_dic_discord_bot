@@ -1,11 +1,15 @@
-const crypto = require('crypto');
+const nacl = require('tweetnacl');
 
 exports.handler = async (event) => {
     console.log('Event received:', JSON.stringify(event, null, 2));
 
-    const signature = event.headers['x-signature-ed25519'];
-    const timestamp = event.headers['x-signature-timestamp'];
+    const signature = event.headers['x-signature-ed25519'] || event.headers['X-Signature-Ed25519'];
+    const timestamp = event.headers['x-signature-timestamp'] || event.headers['X-Signature-Timestamp'];
     const body = event.body;
+
+    console.log('Headers:', JSON.stringify(event.headers, null, 2));
+    console.log('Signature:', signature);
+    console.log('Timestamp:', timestamp);
 
     if (!verifySignature(signature, timestamp, body)) {
         return {
@@ -81,18 +85,11 @@ function verifySignature(signature, timestamp, body) {
     }
 
     try {
-        const isVerified = crypto.verify(
-            'ed25519',
+        return nacl.sign.detached.verify(
             Buffer.from(timestamp + body),
-            {
-                key: Buffer.from(PUBLIC_KEY, 'hex'),
-                format: 'der',
-                type: 'spki'
-            },
-            Buffer.from(signature, 'hex')
+            Buffer.from(signature, 'hex'),
+            Buffer.from(PUBLIC_KEY, 'hex')
         );
-
-        return isVerified;
     } catch (error) {
         console.error('Signature verification failed:', error);
         return false;
