@@ -1,0 +1,24 @@
+{
+  "name": "discord-bot-lambda",
+  "version": "1.0.0",
+  "description": "Discord bot running on AWS Lambda",
+  "main": "index.js",
+  "scripts": {
+    "deploy": "zip -r discord-bot.zip index.js package.json",
+    "register-commands": "node register-commands.js"
+  },
+  "dependencies": {
+    "discord-interactions": "^3.4.0"
+  },
+  "devDependencies": {
+    "node-fetch": "^2.6.7"
+  },
+  "keywords": [
+    "discord",
+    "bot",
+    "lambda",
+    "aws"
+  ],
+  "author": "",
+  "license": "MIT"
+}
