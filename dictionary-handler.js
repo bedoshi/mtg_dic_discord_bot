@@ -15,15 +15,45 @@ try {
 
 const DIC_URL = 'https://whisper.wisdom-guild.net/apps/autodic/d/JT/MS/JE/DICALL_JT_MS_JE_2.txt';
 
+// 処理済みメッセージIDを保存するセット（Lambda実行中のみ）
+const processedMessageIds = new Set();
+
 exports.handler = async (event) => {
     console.log('Dictionary handler event received:', JSON.stringify(event, null, 2));
 
     for (const record of event.Records) {
         try {
-            const message = JSON.parse(record.body);
-            const { applicationId, token, userId } = message;
+            const messageId = record.messageId;
+            const receiveCount = parseInt(record.attributes.ApproximateReceiveCount || '1');
 
-            console.log('Processing dictionary request for user:', userId);
+            // 重複チェック
+            if (processedMessageIds.has(messageId)) {
+                console.log(`Skipping duplicate message ID: ${messageId}`);
+                continue;
+            }
+
+            // 受信回数が多い場合は警告
+            if (receiveCount > 1) {
+                console.log(`Message ${messageId} has been received ${receiveCount} times`);
+            }
+
+            // メッセージIDを処理済みとして記録
+            processedMessageIds.add(messageId);
+
+            const message = JSON.parse(record.body);
+            const { applicationId, token, userId, timestamp } = message;
+
+            // ユーザー+タイムスタンプでの重複チェック
+            const requestKey = `${userId}-${timestamp}`;
+            if (processedMessageIds.has(requestKey)) {
+                console.log(`Skipping duplicate request for user ${userId} at ${timestamp}`);
+                continue;
+            }
+
+            // リクエストキーも処理済みとして記録
+            processedMessageIds.add(requestKey);
+
+            console.log('Processing dictionary request for user:', userId, 'messageId:', messageId, 'timestamp:', timestamp);
 
             // ZIPファイルをダウンロードして解凍
             const dicJpEnFile = await downloadAndExtractDictionary();
@@ -97,11 +127,14 @@ exports.handler = async (event) => {
                 fs.unlinkSync(zipPath);
             }
 
+            console.log(`Successfully completed dictionary processing for user ${userId}, messageId: ${messageId}`);
+
         } catch (error) {
             console.error('Error processing dictionary request:', error);
+            console.error('Failed messageId:', record.messageId);
 
             const message = JSON.parse(record.body);
-            const { applicationId, token } = message;
+            const { applicationId, token, userId } = message;
 
             // エラーの種類に応じたメッセージを送信
             let errorMessage = 'Error fetching dictionary data. Please try again later.';
@@ -117,6 +150,7 @@ exports.handler = async (event) => {
             }
 
             await sendFollowupMessage(applicationId, token, errorMessage);
+            console.log(`Error message sent to user ${userId} for messageId: ${record.messageId}`);
         }
     }
 
