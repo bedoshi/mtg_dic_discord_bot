@@ -1,3 +1,4 @@
+require('dotenv').config();
 const fetch = require('node-fetch');
 
 const APPLICATION_ID = process.env.DISCORD_APPLICATION_ID;
