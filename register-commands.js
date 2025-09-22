@@ -12,6 +12,10 @@ const commands = [
     {
         name: 'hello',
         description: 'Say hello to a user'
+    },
+    {
+        name: 'get-dictionaly',
+        description: 'Get dictionary file'
     }
 ];
 
