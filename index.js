@@ -96,6 +96,39 @@ exports.handler = async (event) => {
                     };
                 }
 
+            case 'purge-queue':
+                try {
+                    // SQSキューをパージ
+                    await sqs.purgeQueue({
+                        QueueUrl: process.env.DICTIONARY_QUEUE_URL
+                    }).promise();
+
+                    console.log('SQS queue purged successfully');
+
+                    return {
+                        statusCode: 200,
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            type: 4,
+                            data: {
+                                content: '✅ SQSキューのメッセージを削除しました'
+                            }
+                        })
+                    };
+                } catch (error) {
+                    console.error('Error purging SQS queue:', error);
+                    return {
+                        statusCode: 200,
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            type: 4,
+                            data: {
+                                content: '❌ SQSキューの削除に失敗しました: ' + error.message
+                            }
+                        })
+                    };
+                }
+
             default:
                 return {
                     statusCode: 200,
