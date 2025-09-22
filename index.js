@@ -1,4 +1,7 @@
 const nacl = require('tweetnacl');
+const https = require('https');
+const url = require('url');
+const DIC_URL = 'https://whisper.wisdom-guild.net/apps/autodic/d/JT/MS/JE/DICALL_JT_MS_JE_2.txt'
 
 exports.handler = async (event) => {
     console.log('Event received:', JSON.stringify(event, null, 2));
@@ -30,7 +33,7 @@ exports.handler = async (event) => {
 
     if (interaction.type === 2) {
         const commandName = interaction.data.name;
-
+        const user = interaction.member?.user || interaction.user;
         switch (commandName) {
             case 'ping':
                 return {
@@ -45,7 +48,6 @@ exports.handler = async (event) => {
                 };
 
             case 'hello':
-                const user = interaction.member?.user || interaction.user;
                 return {
                     statusCode: 200,
                     headers: { 'Content-Type': 'application/json' },
@@ -56,6 +58,35 @@ exports.handler = async (event) => {
                         }
                     })
                 };
+            case 'get-dictionaly':
+                try {
+                    const response = await fetchDictionary();
+                    const parsedUrl = url.parse(DIC_URL);
+                    const extension = parsedUrl.pathname.split('.').pop();
+
+                    return {
+                        statusCode: 200,
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            type: 4,
+                            data: {
+                                content: `Dictionary file extension: .${extension}`
+                            }
+                        })
+                    };
+                } catch (error) {
+                    console.error('Error fetching dictionary:', error);
+                    return {
+                        statusCode: 200,
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            type: 4,
+                            data: {
+                                content: 'Error fetching dictionary file'
+                            }
+                        })
+                    };
+                }
 
             default:
                 return {
@@ -76,6 +107,24 @@ exports.handler = async (event) => {
         body: JSON.stringify({ error: 'Unknown interaction type' })
     };
 };
+
+function fetchDictionary() {
+    return new Promise((resolve, reject) => {
+        https.get(DIC_URL, (response) => {
+            let data = '';
+
+            response.on('data', chunk => {
+                data += chunk;
+            });
+
+            response.on('end', () => {
+                resolve(data);
+            });
+        }).on('error', (error) => {
+            reject(error);
+        });
+    });
+}
 
 function verifySignature(signature, timestamp, body) {
     const PUBLIC_KEY = process.env.DISCORD_PUBLIC_KEY;
