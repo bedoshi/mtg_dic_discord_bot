@@ -1,6 +1,5 @@
 const nacl = require('tweetnacl');
 const https = require('https');
-const url = require('url');
 const DIC_URL = 'https://whisper.wisdom-guild.net/apps/autodic/d/JT/MS/JE/DICALL_JT_MS_JE_2.txt'
 
 exports.handler = async (event) => {
@@ -61,7 +60,7 @@ exports.handler = async (event) => {
             case 'get-dictionaly':
                 try {
                     const response = await fetchDictionary();
-                    const parsedUrl = url.parse(DIC_URL);
+                    const parsedUrl = new URL(DIC_URL);
                     const extension = parsedUrl.pathname.split('.').pop();
 
                     return {
