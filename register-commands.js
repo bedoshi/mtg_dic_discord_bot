@@ -17,6 +17,10 @@ const commands = [
     {
         name: 'get-dictionary',
         description: 'Get dictionary file'
+    },
+    {
+        name: 'purge-queue',
+        description: 'Purge SQS queue messages'
     }
 ];
 
