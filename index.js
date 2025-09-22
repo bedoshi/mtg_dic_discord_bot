@@ -1,6 +1,6 @@
 const nacl = require('tweetnacl');
-const https = require('https');
-const DIC_URL = 'https://whisper.wisdom-guild.net/apps/autodic/d/JT/MS/JE/DICALL_JT_MS_JE_2.txt'
+const AWS = require('aws-sdk');
+const sqs = new AWS.SQS();
 
 exports.handler = async (event) => {
     console.log('Event received:', JSON.stringify(event, null, 2));
@@ -59,28 +59,38 @@ exports.handler = async (event) => {
                 };
             case 'get-dictionary':
                 try {
-                    const response = await fetchDictionary();
-                    const contentType = response.contentType || 'unknown';
+                    // SQSメッセージを送信して非同期処理を開始
+                    const messageBody = {
+                        applicationId: interaction.application_id,
+                        token: interaction.token,
+                        userId: user.id,
+                        timestamp: new Date().toISOString()
+                    };
 
+                    await sqs.sendMessage({
+                        QueueUrl: process.env.DICTIONARY_QUEUE_URL,
+                        MessageBody: JSON.stringify(messageBody)
+                    }).promise();
+
+                    console.log('Dictionary processing queued for user:', user.id);
+
+                    // 即座に処理開始の応答を返す
                     return {
                         statusCode: 200,
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
-                            type: 4,
-                            data: {
-                                content: `Dictionary file Content-Type: ${contentType}`
-                            }
+                            type: 5 // DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE
                         })
                     };
                 } catch (error) {
-                    console.error('Error fetching dictionary:', error);
+                    console.error('Error in get-dictionary command:', error);
                     return {
                         statusCode: 200,
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             type: 4,
                             data: {
-                                content: 'Error fetching dictionary file'
+                                content: 'An error occurred while processing the command'
                             }
                         })
                     };
@@ -106,26 +116,6 @@ exports.handler = async (event) => {
     };
 };
 
-function fetchDictionary() {
-    return new Promise((resolve, reject) => {
-        https.get(DIC_URL, (response) => {
-            let data = '';
-
-            response.on('data', chunk => {
-                data += chunk;
-            });
-
-            response.on('end', () => {
-                resolve({
-                    data: data,
-                    contentType: response.headers['content-type']
-                });
-            });
-        }).on('error', (error) => {
-            reject(error);
-        });
-    });
-}
 
 function verifySignature(signature, timestamp, body) {
     const PUBLIC_KEY = process.env.DISCORD_PUBLIC_KEY;

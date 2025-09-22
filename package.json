@@ -4,11 +4,14 @@
   "description": "Discord bot running on AWS Lambda",
   "main": "index.js",
   "scripts": {
-    "deploy": "zip -r discord-bot.zip index.js package.json node_modules",
+    "deploy": "zip -r discord-bot.zip index.js dictionary-handler.js package.json node_modules",
     "register-commands": "node register-commands.js"
   },
   "dependencies": {
-    "tweetnacl": "^1.0.3"
+    "tweetnacl": "^1.0.3",
+    "aws-sdk": "^2.1691.0",
+    "jmespath": "^0.16.0",
+    "xml2js": "^0.6.2"
   },
   "devDependencies": {
     "dotenv": "^17.2.2",
