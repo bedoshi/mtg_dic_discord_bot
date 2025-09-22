@@ -57,11 +57,10 @@ exports.handler = async (event) => {
                         }
                     })
                 };
-            case 'get-dictionaly':
+            case 'get-dictionary':
                 try {
                     const response = await fetchDictionary();
-                    const parsedUrl = new URL(DIC_URL);
-                    const extension = parsedUrl.pathname.split('.').pop();
+                    const contentType = response.contentType || 'unknown';
 
                     return {
                         statusCode: 200,
@@ -69,7 +68,7 @@ exports.handler = async (event) => {
                         body: JSON.stringify({
                             type: 4,
                             data: {
-                                content: `Dictionary file extension: .${extension}`
+                                content: `Dictionary file Content-Type: ${contentType}`
                             }
                         })
                     };
@@ -117,7 +116,10 @@ function fetchDictionary() {
             });
 
             response.on('end', () => {
-                resolve(data);
+                resolve({
+                    data: data,
+                    contentType: response.headers['content-type']
+                });
             });
         }).on('error', (error) => {
             reject(error);
