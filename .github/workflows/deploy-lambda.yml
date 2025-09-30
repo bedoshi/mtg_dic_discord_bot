@@ -31,7 +31,13 @@ jobs:
         run: pnpm install --prod
 
       - name: Create deployment package
-        run: zip -r discord-bot.zip index.js dictionary-handler.js src package.json node_modules
+        run: |
+          zip -r discord-bot.zip . \
+            -x "*.git*" \
+            -x "*node_modules/.cache/*" \
+            -x "*.md" \
+            -x "tests/*" \
+            -x ".github/*"
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -39,11 +45,12 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      # - name: Deploy to Lambda for bot
-      #   run: |
-      #     aws lambda update-function-code \
-      #       --function-name ${{ secrets.LAMBDA_FUNC_BOT }} \
-      #       --zip-file fileb://discord-bot.zip
+      - name: Deploy to Lambda for bot
+        run: |
+          aws lambda update-function-code \
+            --function-name ${{ secrets.LAMBDA_FUNC_BOT }} \
+            --zip-file fileb://discord-bot.zip
+
       - name: Deploy to Lambda for SQS handler
         run: |
           aws lambda update-function-code \
