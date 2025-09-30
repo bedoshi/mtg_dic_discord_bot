@@ -39,11 +39,11 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      - name: Deploy to Lambda for bot
-        run: |
-          aws lambda update-function-code \
-            --function-name ${{ secrets.LAMBDA_FUNC_BOT }} \
-            --zip-file fileb://discord-bot.zip
+      # - name: Deploy to Lambda for bot
+      #   run: |
+      #     aws lambda update-function-code \
+      #       --function-name ${{ secrets.LAMBDA_FUNC_BOT }} \
+      #       --zip-file fileb://discord-bot.zip
       - name: Deploy to Lambda for SQS handler
         run: |
           aws lambda update-function-code \
