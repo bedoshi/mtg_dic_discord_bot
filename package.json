@@ -4,7 +4,7 @@
   "description": "Discord bot running on AWS Lambda",
   "main": "index.js",
   "scripts": {
-    "deploy": "zip -r discord-bot.zip index.js dictionary-handler.js package.json node_modules",
+    "deploy": "zip -r discord-bot.zip index.js dictionary-handler.js src package.json node_modules",
     "register-commands": "node register-commands.js"
   },
   "dependencies": {
