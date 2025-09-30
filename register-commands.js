@@ -11,16 +11,16 @@ const commands = [
         description: 'Ping the bot'
     },
     {
-        name: 'hello',
-        description: 'Say hello to a user'
-    },
-    {
         name: 'get-dictionary',
         description: 'MTGの辞書データを取得します。'
     },
     {
         name: 'purge-queue',
         description: '不具合により処理がうまくいかないときに、処理待ちイベントを削除します。'
+    },
+    {
+        name: 'remove-guild-command',
+        description: '反映を急ぐために実装したギルドコマンドを削除します。'
     }
 ];
 

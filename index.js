@@ -45,18 +45,6 @@ exports.handler = async (event) => {
                         }
                     })
                 };
-
-            case 'hello':
-                return {
-                    statusCode: 200,
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        type: 4,
-                        data: {
-                            content: `Hello, ${user.username}! 👋`
-                        }
-                    })
-                };
             case 'get-dictionary':
                 try {
                     // SQSメッセージを送信して非同期処理を開始
