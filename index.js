@@ -117,6 +117,79 @@ exports.handler = async (event) => {
                     };
                 }
 
+            case 'remove-guild-command':
+                try {
+                    const applicationId = process.env.DISCORD_APPLICATION_ID;
+                    const botToken = process.env.DISCORD_BOT_TOKEN;
+                    const guildId = process.env.DISCORD_GUILD_ID;
+
+                    if (!applicationId || !botToken || !guildId) {
+                        return {
+                            statusCode: 200,
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                type: 4,
+                                data: {
+                                    content: '❌ 環境変数が設定されていません'
+                                }
+                            })
+                        };
+                    }
+
+                    // ギルドコマンドを全て削除（空の配列をPUTする）
+                    const fetch = require('node-fetch');
+                    const response = await fetch(
+                        `https://discord.com/api/v10/applications/${applicationId}/guilds/${guildId}/commands`,
+                        {
+                            method: 'PUT',
+                            headers: {
+                                'Authorization': `Bot ${botToken}`,
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify([])
+                        }
+                    );
+
+                    if (response.ok) {
+                        console.log('Successfully removed guild commands');
+                        return {
+                            statusCode: 200,
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                type: 4,
+                                data: {
+                                    content: '✅ ギルドコマンドを削除しました'
+                                }
+                            })
+                        };
+                    } else {
+                        const errorText = await response.text();
+                        console.error('Failed to remove guild commands:', response.status, errorText);
+                        return {
+                            statusCode: 200,
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                type: 4,
+                                data: {
+                                    content: '❌ ギルドコマンドの削除に失敗しました: ' + response.status
+                                }
+                            })
+                        };
+                    }
+                } catch (error) {
+                    console.error('Error removing guild commands:', error);
+                    return {
+                        statusCode: 200,
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            type: 4,
+                            data: {
+                                content: '❌ ギルドコマンドの削除中にエラーが発生しました: ' + error.message
+                            }
+                        })
+                    };
+                }
+
             default:
                 return {
                     statusCode: 200,
