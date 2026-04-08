@@ -45,9 +45,7 @@ exports.handler = async (event) => {
                         }
                     })
                 };
-            case 'get-dictionary':
-                try {
-                    // SQSメッセージを送信して非同期処理を開始
+            case 'get-dictionary': {
                     const messageBody = {
                         applicationId: interaction.application_id,
                         token: interaction.token,
@@ -55,31 +53,22 @@ exports.handler = async (event) => {
                         timestamp: new Date().toISOString()
                     };
 
-                    await sqs.send(new SendMessageCommand({
+                    // awaitせずバックグラウンドでSQS送信（Lambdaはイベントループが空になるまで待つ）
+                    sqs.send(new SendMessageCommand({
                         QueueUrl: process.env.DICTIONARY_QUEUE_URL,
                         MessageBody: JSON.stringify(messageBody)
-                    }));
+                    })).then(() => {
+                        console.log('Dictionary processing queued for user:', user.id);
+                    }).catch((error) => {
+                        console.error('Failed to queue dictionary processing:', error);
+                    });
 
-                    console.log('Dictionary processing queued for user:', user.id);
-
-                    // 即座に処理開始の応答を返す
+                    // SQS完了を待たず即座にtype 5を返す
                     return {
                         statusCode: 200,
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             type: 5 // DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE
-                        })
-                    };
-                } catch (error) {
-                    console.error('Error in get-dictionary command:', error);
-                    return {
-                        statusCode: 200,
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            type: 4,
-                            data: {
-                                content: 'An error occurred while processing the command'
-                            }
                         })
                     };
                 }
