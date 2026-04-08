@@ -1,36 +1,61 @@
-# Discord Bot for AWS Lambda
+# MTG Dictionary Discord Bot
 
-AWS Lambda上で動作するDiscord botのサンプルです。
+AWS Lambda上で動作するMTG辞書配布用のDiscord botです。
 
 ## 概要
 
-このプロジェクトは、AWS Lambdaを使用してサーバーレスで動作するDiscord botです。Discord Interactions API（webhook）を使用して、スラッシュコマンドに応答します。
+Discord Interactions API（webhook方式）を使用してスラッシュコマンドに応答します。
+辞書ファイルの配布はSQSを介した非同期処理で行います。
 
-## 機能
+## アーキテクチャ
 
-- `/ping` - botの応答確認
-- `/hello` - ユーザーへの挨拶
+```
+Discord → Lambda Function URL (index.js)
+                ↓ SQS
+          Lambda (dictionary-handler.js)
+                ↓
+          Discord followup message
+```
+
+### Lambda関数
+
+| 関数名 | ハンドラー | 役割 |
+|---|---|---|
+| `mtg-dic_discord-bot` | `index.handler` | Discord webhook受信・署名検証・コマンド処理 |
+| `discord-bot-dictionary-handler` | `dictionary-handler.handler` | SQSトリガー・辞書ファイル生成・Discord送信 |
+
+両関数に同じzipをデプロイし、AWS側のハンドラー設定で役割を分けています。
+
+## スラッシュコマンド
+
+| コマンド | 説明 |
+|---|---|
+| `/ping` | 応答確認 |
+| `/get-dictionary` | 辞書ファイルを非同期で生成・送信（type 5 deferred response） |
+| `/purge-queue` | SQSキューのメッセージを削除 |
+| `/remove-guild-command` | ギルドスラッシュコマンドを全削除 |
 
 ## セットアップ
 
 ### 1. Discord Developer Portalでの設定
 
-1. [Discord Developer Portal](https://discord.com/developers/applications)にアクセス
-2. 「New Application」をクリックしてアプリケーションを作成
-3. 「Bot」タブでbotを作成し、トークンを取得
-4. 「General Information」タブで以下の情報を取得：
+1. [Discord Developer Portal](https://discord.com/developers/applications)でアプリケーションを作成
+2. 「Bot」タブでbotトークンを取得
+3. 「General Information」タブで以下を取得：
    - Application ID
    - Public Key
 
 ### 2. 環境変数の設定
 
-`.env.example`を参考に環境変数を設定してください：
+Lambda関数の環境変数として以下を設定します（`.env`はローカルの`register-commands.js`実行時のみ使用）：
 
-```bash
-DISCORD_PUBLIC_KEY=your_discord_public_key_here
-DISCORD_APPLICATION_ID=your_application_id_here
-DISCORD_BOT_TOKEN=your_bot_token_here
-```
+| 変数名 | 説明 |
+|---|---|
+| `DISCORD_PUBLIC_KEY` | Ed25519署名検証用公開鍵 |
+| `DISCORD_APPLICATION_ID` | DiscordアプリケーションID |
+| `DISCORD_BOT_TOKEN` | Botトークン |
+| `DISCORD_GUILD_ID` | ギルドID |
+| `DICTIONARY_QUEUE_URL` | SQSキューURL |
 
 ### 3. 依存関係のインストール
 
@@ -40,85 +65,100 @@ pnpm install
 
 ### 4. スラッシュコマンドの登録
 
+ローカルで`.env`を用意してから実行：
+
 ```bash
 pnpm run register-commands
 ```
 
-## AWS Lambdaへのデプロイ
+## デプロイ
 
-### 1. デプロイパッケージの作成
+GitHub Actionsによる自動デプロイが設定されています。
+
+- `main`ブランチへのpushで自動実行
+- GitHub ActionsのUIから手動実行（`workflow_dispatch`）も可能
+
+### 手動でデプロイする場合
 
 ```bash
-pnpm run deploy
+# パッケージ作成
+zip -r discord-bot.zip . \
+  -x "*.git*" -x "*node_modules/.cache/*" \
+  -x "*.md" -x "tests/*" -x ".github/*"
+
+# Lambda更新
+aws lambda update-function-code \
+  --function-name mtg-dic_discord-bot \
+  --zip-file fileb://discord-bot.zip
+
+aws lambda update-function-code \
+  --function-name discord-bot-dictionary-handler \
+  --zip-file fileb://discord-bot.zip
 ```
 
-これにより`discord-bot.zip`ファイルが作成されます。
+### Lambda関数の設定（AWS側）
 
-### 2. Lambda関数の作成
+**mtg-dic_discord-bot:**
+- Handler: `index.handler`
+- Timeout: 30秒
+- Function URL: 有効（認証タイプ: NONE）
 
-1. AWS Lambdaコンソールで新しい関数を作成
-2. Runtime: Node.js 18.x以上を選択
-3. `discord-bot.zip`をアップロード
+**discord-bot-dictionary-handler:**
+- Handler: `dictionary-handler.handler`
+- Timeout: 必要に応じて設定
+- トリガー: SQS
 
-### 3. Lambda関数の設定
+### Discord Applicationの設定
 
-- **Handler**: `index.handler`
-- **Timeout**: 30秒
-- **Environment variables**: 上記の環境変数を設定
-
-### 4. Function URLの設定
-
-1. Lambda関数の「Configuration」→「Function URL」で有効化
-2. 認証タイプ: NONE
-3. 生成されたURLをコピー
-
-### 5. Discord Applicationの設定
-
-1. Discord Developer Portalに戻る
-2. 「General Information」→「Interactions Endpoint URL」にLambda Function URLを設定
-3. 「Save Changes」をクリック
-
-## botをサーバーに招待
-
-1. 「OAuth2」→「URL Generator」で以下を選択：
-   - Scopes: `bot`, `applications.commands`
-   - Bot Permissions: 必要な権限を選択
-2. 生成されたURLでbotをサーバーに招待
+「General Information」→「Interactions Endpoint URL」にLambda Function URLを設定。
 
 ## ファイル構成
 
-- `index.js` - Lambda関数のメインハンドラー
-- `package.json` - プロジェクト設定と依存関係
-- `register-commands.js` - スラッシュコマンド登録スクリプト
-- `.env.example` - 環境変数のテンプレート
+```
+├── index.js                  # Botハンドラー（webhook受信）
+├── dictionary-handler.js     # SQSハンドラー（辞書処理）
+├── register-commands.js      # スラッシュコマンド登録スクリプト
+├── src/
+│   ├── dictionaryProcessor.js  # 辞書ファイル生成
+│   ├── discordUtils.js         # Discord followupメッセージ送信
+│   └── messageProcessor.js    # 重複排除・ファイルサイズ確認
+├── .github/workflows/
+│   └── deploy-lambda.yml     # CI/CDワークフロー
+└── CLAUDE.md                 # 設計方針・実装上の注意事項
+```
 
 ## 技術仕様
 
-- **Runtime**: Node.js 18.x
-- **Framework**: なし（Native Lambda）
+- **Runtime**: Node.js 22.x
+- **パッケージマネージャー**: pnpm
 - **Discord API**: Interactions API（webhook方式）
-- **認証**: Ed25519署名検証
+- **認証**: Ed25519署名検証（tweetnacl）
+- **非同期処理**: AWS SQS
+- **CI/CD**: GitHub Actions（OIDC + IAMロール）
 
 ## トラブルシューティング
 
-### botが応答しない場合
+### アプリケーションが応答しない
 
-1. Lambda関数のログを確認
-2. 環境変数が正しく設定されているか確認
-3. Discord ApplicationのInteractions Endpoint URLが正しいか確認
-4. Function URLが公開されているか確認
+1. Discordのタイムアウトは3秒。コールドスタート時はギリギリになることがある
+2. Lambda Function URLのログを確認（CloudWatch）
+3. 環境変数が正しく設定されているか確認
+4. Function URLがDiscordのInteractions Endpoint URLに正しく設定されているか確認
 
-### 署名検証エラーの場合
+### SQSにメッセージが届かない
 
-1. DISCORD_PUBLIC_KEYが正しいか確認
-2. Lambda関数のタイムアウト設定を確認
-3. リクエストの形式が正しいか確認
+1. `DICTIONARY_QUEUE_URL`環境変数が設定されているか確認
+2. LambdaのIAMロールにSQS送信権限があるか確認
+3. `dictionary-handler`のCloudWatchログを確認
 
-## 拡張方法
+### 署名検証エラー
 
-新しいコマンドを追加する場合：
+1. `DISCORD_PUBLIC_KEY`が正しいか確認
+2. リクエストボディが改ざんされていないか確認
+
+## 新しいコマンドの追加
 
 1. `register-commands.js`にコマンド定義を追加
-2. `index.js`にコマンドハンドリング処理を追加
-3. スラッシュコマンドを再登録
+2. `index.js`の`_handler`内のswitchにケースを追加
+3. スラッシュコマンドを再登録（`pnpm run register-commands`）
 4. Lambda関数を再デプロイ
