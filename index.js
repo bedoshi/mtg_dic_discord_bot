@@ -2,7 +2,16 @@ const nacl = require('tweetnacl');
 const { SQSClient, SendMessageCommand, PurgeQueueCommand } = require('@aws-sdk/client-sqs');
 const sqs = new SQSClient({});
 
-exports.handler = async (event) => {
+exports.handler = function(event, context, callback) {
+    // callbackWaitsForEmptyEventLoop = true（デフォルト）により、
+    // callback()でDiscordへ即レスポンスした後もイベントループが空になるまで待機する。
+    // これによりSQS送信のPromiseが完了してからLambdaが凍結される。
+    _handler(event)
+        .then(response => callback(null, response))
+        .catch(err => callback(err));
+};
+
+async function _handler(event) {
     console.log('Event received:', JSON.stringify(event, null, 2));
 
     const signature = event.headers['x-signature-ed25519'] || event.headers['X-Signature-Ed25519'];
@@ -45,8 +54,7 @@ exports.handler = async (event) => {
                         }
                     })
                 };
-            case 'get-dictionary':
-                try {
+            case 'get-dictionary': {
                     const messageBody = {
                         applicationId: interaction.application_id,
                         token: interaction.token,
@@ -54,28 +62,24 @@ exports.handler = async (event) => {
                         timestamp: new Date().toISOString()
                     };
 
-                    await sqs.send(new SendMessageCommand({
+                    // awaitしない（fire-and-forget）
+                    // callbackWaitsForEmptyEventLoopにより、Lambdaはこのpromiseが
+                    // 完了するまで凍結しないため、SQS送信は確実に完了する
+                    sqs.send(new SendMessageCommand({
                         QueueUrl: process.env.DICTIONARY_QUEUE_URL,
                         MessageBody: JSON.stringify(messageBody)
-                    }));
+                    })).then(() => {
+                        console.log('Dictionary processing queued for user:', user.id);
+                    }).catch((error) => {
+                        console.error('Failed to queue dictionary processing:', error);
+                    });
 
-                    console.log('Dictionary processing queued for user:', user.id);
-
+                    // SQS完了を待たず即座にtype 5を返す
                     return {
                         statusCode: 200,
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             type: 5 // DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE
-                        })
-                    };
-                } catch (error) {
-                    console.error('Error in get-dictionary command:', error);
-                    return {
-                        statusCode: 200,
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            type: 4,
-                            data: { content: 'コマンドの処理中にエラーが発生しました' }
                         })
                     };
                 }
