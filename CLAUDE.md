@@ -13,6 +13,12 @@
 
 ---
 
+## Linter
+
+JavaScriptのソースコード（`.js` ファイル）を変更した際は、必ず `pnpm lint` を実行すること。
+
+---
+
 ## Lambda ハンドラーの設計方針
 
 ### callback-based handler を使う理由

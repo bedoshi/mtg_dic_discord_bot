@@ -5,19 +5,24 @@
   "main": "index.js",
   "scripts": {
     "deploy": "zip -r discord-bot.zip index.js dictionary-handler.js src package.json node_modules",
-    "register-commands": "node register-commands.js"
+    "register-commands": "node register-commands.js",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix"
   },
   "dependencies": {
-    "tweetnacl": "^1.0.3",
     "@aws-sdk/client-sqs": "^3.0.0",
-    "jmespath": "^0.16.0",
-    "node-stream-zip": "^1.15.0",
     "iconv-lite": "^0.6.3",
+    "jmespath": "^0.16.0",
+    "node-fetch": "^2.6.7",
+    "node-stream-zip": "^1.15.0",
     "safer-buffer": "^2.1.2",
-    "node-fetch": "^2.6.7"
+    "tweetnacl": "^1.0.3"
   },
   "devDependencies": {
-    "dotenv": "^17.2.2"
+    "@eslint/js": "^9.39.4",
+    "dotenv": "^17.2.2",
+    "eslint": "^9.39.4",
+    "globals": "^17.4.0"
   },
   "keywords": [
     "discord",
