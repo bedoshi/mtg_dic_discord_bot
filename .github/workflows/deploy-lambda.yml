@@ -10,6 +10,10 @@ permissions:
   id-token: write
   contents: read
 
+env:
+  LAMBDA_FUNC_BOT: mtg-dic_discord-bot
+  LAMBDA_FUNC_SQS_HANDLER: discord-bot-dictionary-handler
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -49,11 +53,11 @@ jobs:
       - name: Deploy to Lambda for bot
         run: |
           aws lambda update-function-code \
-            --function-name ${{ secrets.LAMBDA_FUNC_BOT }} \
+            --function-name ${{ env.LAMBDA_FUNC_BOT }} \
             --zip-file fileb://discord-bot.zip
 
       - name: Deploy to Lambda for SQS handler
         run: |
           aws lambda update-function-code \
-            --function-name ${{ secrets.LAMBDA_FUNC_SQS_HANDLER }} \
+            --function-name ${{ env.LAMBDA_FUNC_SQS_HANDLER }} \
             --zip-file fileb://discord-bot.zip
