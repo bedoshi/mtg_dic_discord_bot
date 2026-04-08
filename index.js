@@ -1,6 +1,6 @@
 const nacl = require('tweetnacl');
-const AWS = require('aws-sdk');
-const sqs = new AWS.SQS();
+const { SQSClient, SendMessageCommand, PurgeQueueCommand } = require('@aws-sdk/client-sqs');
+const sqs = new SQSClient({});
 
 exports.handler = async (event) => {
     console.log('Event received:', JSON.stringify(event, null, 2));
@@ -55,10 +55,10 @@ exports.handler = async (event) => {
                         timestamp: new Date().toISOString()
                     };
 
-                    await sqs.sendMessage({
+                    await sqs.send(new SendMessageCommand({
                         QueueUrl: process.env.DICTIONARY_QUEUE_URL,
                         MessageBody: JSON.stringify(messageBody)
-                    }).promise();
+                    }));
 
                     console.log('Dictionary processing queued for user:', user.id);
 
@@ -87,9 +87,9 @@ exports.handler = async (event) => {
             case 'purge-queue':
                 try {
                     // SQSキューをパージ
-                    await sqs.purgeQueue({
+                    await sqs.send(new PurgeQueueCommand({
                         QueueUrl: process.env.DICTIONARY_QUEUE_URL
-                    }).promise();
+                    }));
 
                     console.log('SQS queue purged successfully');
 
